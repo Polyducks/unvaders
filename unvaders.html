@@ -1,0 +1,310 @@
+<style>
+	*{
+		box-sizing: border-box;
+	}
+	body{
+		margin: 0;
+		padding: 0;
+	}
+	#game-area{
+		background-color: black;
+		margin: 5px;
+	}
+</style>
+
+<canvas id="game-area" width="300" height="400">
+</canvas>
+
+<script>
+
+	(function Space_Unvaders(){
+		/*##############################
+		USEFUL FUNCTIONS
+		##############################*/
+		
+		/*==============================
+		LOAD IMAGES
+		==============================*/
+		//loads the images it's given via src_array
+		//and returns an array of images as an
+		//argument of the callback.
+		function Load_Images(src_array, callback){
+			var returnImages = [];
+			var totalImages = src_array.length;
+			var loaded = 0;
+			for (var x in src_array){
+				//make a new image
+				returnImages[x] = new Image();
+				
+				//ON LOAD
+				returnImages[x].addEventListener("load", function(){
+					Complete();
+				});
+				//ON ERROR
+				returnImages[x].addEventListener("error", function(){
+					console.error("ERROR: failed to load '" + src_array[x] + "'");
+					Complete();
+				});
+				//ON COMPLETE
+				function Complete(){
+					loaded++;
+					if ( loaded == totalImages ){
+						callback( returnImages );
+					}
+				}
+				
+				//give the new image a src
+				returnImages[x].src = src_array[x];
+			}
+		}
+		
+		/*==============================
+		EXTRACT SPRITE
+		==============================*/
+		//extracts a sprite from the sprite sheet
+		//and returns it as an image object.
+		function Extract_Sprite( sprite_sheet_image, x, y, w, h ){
+			var img = sprite_sheet_image;
+			var returnImage = new Image();
+			//imaginary canvas
+			var i = document.createElement("CANVAS");
+				i.width = w;
+				i.height = h;
+			var ictx = i.getContext("2d");
+			
+			ictx.drawImage(img, x, y, w, h, 0, 0, w, h);
+			returnImage.src = i.toDataURL();
+			return returnImage;
+		}
+		
+		/*==============================
+		USER INPUT
+		==============================*/
+		var keyMap = [];
+		/*values for keyMap can be:
+			0 | null	not pressed
+			1			pressed
+			//code resets to 0 after it's acknowledged it's been pressed
+		*/
+		document.addEventListener("keydown", function(e){
+			keyMap[e.keyCode] = 1;
+		});
+		document.addEventListener("blur", function(){
+			//when window loses focus, reset keys.
+			Reset_KeyMap();
+		});
+		function Reset_KeyMap(){
+			keyMap.length = 0;
+		}
+		
+		/*==============================
+		COLLISION
+		==============================*/
+		function Collides( obj1, obj2 ){
+			if (
+				obj1.y > (obj2.y + obj2.h) ||
+				obj2.y > (obj1.y + obj1.h) ||
+				obj1.x > (obj2.x + obj2.w) ||
+				obj2.x > (obj1.x + obj1.x)
+			){
+				//impossible for items to collide
+				return false;
+			}
+			return true;
+		}
+		
+		/*##############################
+		INITIALISATION
+		##############################*/
+		//canvas
+		var c = document.getElementById("game-area"),
+		ctx = c.getContext("2d", {alpha: false});
+			//ctx vars
+			ctx.imageSmoothingEnabled = false; //disable antialiasing
+			ctx.font = "20px Lucida Console";
+			ctx.fillStyle = "white";
+			ctx.textAlign = "end";
+		//game vars
+		var game = {};
+			game.stage = 0;
+			game.score = 0;
+			game.drawScale = 2; //pixel size
+			game.width = parseInt(c.width);
+			game.height = parseInt(c.height);
+			game.imgs = {};
+			//interval holder
+			game.loop;
+			//array of invaders, barriers, space ships etc
+			game.objects = [];
+			//animationTicker cycles to give the sprites something to listen for
+			game.animationTicker = 0;
+			game.animationTarget = 1000;
+		
+		//LOAD IMAGES
+		Load_Images(["spritesheet.png"], function(sprite_sheet){
+			game.imgs = {
+				"invader" 	: 	[Extract_Sprite( sprite_sheet[0], 0, 0, 6, 7 ),
+								Extract_Sprite( sprite_sheet[0], 6, 0, 6, 7 )],
+				"ship"		: 	[Extract_Sprite( sprite_sheet[0], 12, 3, 7, 4 )]
+			}
+			//loads Main() when all images are loaded
+			Main();
+		});
+
+
+		/*##############################
+		MAIN CODE
+		##############################*/
+		function Main(){
+		
+			//testing purposes
+			game.stage = 1;
+			
+			
+			switch( game.stage ){
+				case 0:	//INTRODUCTION
+				break;
+				
+				case 1: //GAMEPLAY
+					
+					//initialise the map
+					//game.objects.push( new obj_Space_Invader(10,10) );
+					for (var i = 0; i < 20; i++){
+						var x,y;
+						x = ((i % 5) * 20)+20;
+						y = ((i % 4) * 20)+20;
+						game.objects.push ( new obj_Space_Invader(x, y) );
+					}
+					
+					//begin the loop logic
+					game.loop = setInterval(function(){
+						Game_Loop_Gameplay();
+					},100);
+				break;
+				
+				case 2: //CUTSCENE
+				break;
+				
+				default:
+					console.error("ERROR: the game.stage has been incremented beyond normal bounds");
+			}
+		}
+		
+		/*==============================
+		GAME LOOP: INTRODUCTION
+		==============================*/
+		
+		/*==============================
+		GAME LOOP: GAMEPLAY
+		==============================*/
+		function Game_Loop_Gameplay(){
+			Process_Sprites();
+			
+			//tick the animation counter
+			if ( game.animationTicker == game.animationTarget ){
+				game.animationTicker = 0;
+			}else{
+				game.animationTicker++;
+			}
+			
+		}
+
+		/*------------------------------
+		GAME OBJECT DEFINITIONS
+		------------------------------*/
+		//SPACE INVADER
+		function obj_Space_Invader(spawnX, spawnY){
+			this.x = spawnX;
+			this.y = spawnY;
+			//array of sprites
+			this.sprite = game.imgs.invader;
+			this.w = this.sprite[0].width  * game.drawScale;
+			this.h = this.sprite[0].height * game.drawScale;
+			//current animation frame
+			this.frame = 0;
+			this.alive = true;
+			var that = this;
+			this.action = function(){
+				if (game.animationTicker % 5 == 0){
+					if (that.frame < that.sprite.length-1){
+						that.frame++;
+					}else{
+						that.frame = 0;
+					}
+				}
+			}
+			this.pew = function(){
+				
+			}
+		}
+		
+		//SHIP
+		function obj_Ship(spawnX, spawnY){
+			this.x = spawnX;
+			this.y = spawnY;
+			this.sprite = game.imgs.ship;
+			this.w = this.sprite[0].width  * game.drawScale;
+			this.h = this.sprite[0].height * game.drawScale;
+			this.frame = 0;
+			var that = this;
+			this.action = function(){
+				//AI for the ship
+				return null;
+			};
+		}
+		
+		//BULLET
+		function obj_Bullet(spawnX, spawnY, dirX, dirY){
+			this.x = spawnX;
+			this.y = spawnY;
+			this.sprite = game.imgs.bullet;
+			this.w = this.sprite[0].width  * game.drawScale;
+			this.h = this.sprite[0].height * game.drawScale;
+			this.dirX = dirX;
+			this.dirY = dirY;
+			var that = this;
+			this.action = function(){
+				//AI for bullet
+				that.x = that.x + dirX;
+				that.y = that.y + dirY;
+				//check for collisions
+			}
+		}
+		
+		/*------------------------------
+		PROCESS SPRITES
+		------------------------------*/
+		//a combination of rendering and processing the AI for each sprite
+		function Process_Sprites(){
+			ctx.clearRect( 0, 0, game.width, game.height );
+			
+			//run through all active game objects and activate / render them
+			for (var i in game.objects){
+				//reduced for clarity
+				var obj = game.objects[i];
+				obj.action();
+				Draw( obj.sprite[ obj.frame ], obj.x, obj.y );
+			}
+			
+			//render score
+			ctx.fillText( game.score, game.width - 5, 20 );
+		}
+		/*------------------------------
+		DRAW
+		------------------------------*/
+		function Draw(sprite, x, y){
+			var s = sprite;
+			ctx.drawImage(s, x, y, s.width * game.drawScale, s.height * game.drawScale);
+		}
+
+		
+		/*==============================
+		GAME LOOP: CUTSCENE
+		==============================*/
+		
+		
+	})();
+	
+	
+	
+</script>
